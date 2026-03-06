@@ -27,32 +27,47 @@ export async function SendEmail(req, res) {
         return res.status(400).send({ error: "Missing required fields: outboxId, from, fromName, subject and either text or html. cc and bcc must be arrays if provided. to must be an array." });
     }
 
-    if(req.iamData.fsId !== "urn:slabs:iam:fs:raven:sendMail" || req.iamData.resourceName !== outboxId){
-        res.status(400).send({ error: "You dont have permission to invoke this cloud function." });
-        return;
-    }
+    if(req.iamData.singleTarget){
+        if(req.iamData.fsId !== "urn:slabs:iam:fs:raven:sendMail" || req.iamData.resourceName !== outboxId){
+            res.status(400).send({ error: "You dont have permission to invoke this cloud function." });
+            return;
+        }
 
-    const maxUsages = req.iamData.extras?.maxUsages;
+        const maxUsages = req.iamData.extras?.maxUsages;
 
-    if (typeof maxUsages === "number" && maxUsages > 0) {
-        try {
-            const [trlInfo] = await req.server.db.query("SELECT usages FROM tokensRevoked WHERE tokenId = ?", [req.iamData.jti]);
+        if (typeof maxUsages === "number" && maxUsages > 0) {
+            try {
+                const [trlInfo] = await req.server.db.query("SELECT usages FROM tokensRevoked WHERE tokenId = ?", [req.iamData.jti]);
 
-            if(trlInfo.length === 0){
-                await req.server.db.query("INSERT INTO tokensRevoked (tokenId, usages, createdAt, expiresAt) VALUES (?, ?, ?, ?)", [req.iamData.jti, 1, new Date(), new Date((req.iamData.exp*1000)+10000)]);
-            }else{
-                const currentUsages = trlInfo[0].usages;
+                if(trlInfo.length === 0){
+                    await req.server.db.query("INSERT INTO tokensRevoked (tokenId, usages, createdAt, expiresAt) VALUES (?, ?, ?, ?)", [req.iamData.jti, 1, new Date(), new Date((req.iamData.exp*1000)+10000)]);
+                }else{
+                    const currentUsages = trlInfo[0].usages;
 
-                if(currentUsages >= req.iamData.extras.maxUsages){
-                    return res.status(401).send({ message: 'Maximum usage limit reached' });
+                    if(currentUsages >= req.iamData.extras.maxUsages){
+                        return res.status(401).send({ message: 'Maximum usage limit reached' });
+                    }
+
+                    await req.server.db.query("UPDATE tokensRevoked SET usages = ? WHERE tokenId = ?", [currentUsages + 1, req.iamData.jti]);
                 }
 
-                await req.server.db.query("UPDATE tokensRevoked SET usages = ? WHERE tokenId = ?", [currentUsages + 1, req.iamData.jti]);
+            } catch (err) {
+                console.error("Error occurred while fetching TRL info:", err);
+                return res.status(500).send({ error: "Internal server error" });
             }
+        }
+    }else{
+        const roles = req.iamData.roles;
+        if (!Array.isArray(roles)) {
+            return reply.code(403).send({ message: "Invalid Token (missing roles)" });
+        }
 
-        } catch (err) {
-            console.error("Error occurred while fetching TRL info:", err);
-            return res.status(500).send({ error: "Internal server error" });
+        const canPut = roles.some((p) =>
+            p.fsId === "urn:slabs:iam:fs:raven:sendMail" && p.targetURN === outboxId
+        );
+
+        if (!canPut) {
+            return reply.code(403).send({ message: "Invalid Permission" });
         }
     }
 
