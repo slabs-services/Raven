@@ -44,7 +44,7 @@ export async function CreateOutbox(req, res) {
         }
 
         const canPut = roles.some((p) =>
-            p.fsId === "urn:slabs:iam:fs:raven:create" && p.targetURN === lakeId
+            p.fsId === "urn:slabs:iam:fs:raven:create"
         );
 
         if (!canPut) {
