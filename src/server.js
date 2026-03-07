@@ -1,9 +1,10 @@
 import Fastify from 'fastify';
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
-import { CreateOutbox, SendEmail } from './routes/Outbox.js';
+import { CreateOutbox } from './routes/Outbox.js';
 import { authMiddlewareUser } from './Middlewares/Auth.js';
 import { CheckOwner } from './routes/Security.js';
+import { SendEmail } from './routes/Mail.js';
 import nodemailer from "nodemailer";
 
 dotenv.config();
